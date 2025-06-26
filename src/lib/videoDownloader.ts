@@ -60,7 +60,18 @@ export class VideoClipService {
       });
 
       if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
+        // Try to get error message from response
+        let errorMessage = `HTTP error! status: ${response.status}`;
+        try {
+          const errorText = await response.text();
+          if (errorText.startsWith('{')) {
+            const errorJson = JSON.parse(errorText);
+            errorMessage = errorJson.error || errorMessage;
+          }
+        } catch (e) {
+          // If we can't parse the error, use the status
+        }
+        throw new Error(errorMessage);
       }
 
       const result: VideoClipResponse = await response.json();
@@ -88,7 +99,19 @@ export class VideoClipService {
   }> {
     try {
       const response = await fetch(`${this.apiBaseUrl}/api/clip-progress/${clipId}`);
-      return await response.json();
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const text = await response.text();
+
+      // Check if response is JSON
+      if (!text.trim().startsWith('{')) {
+        throw new Error('Invalid JSON response from server');
+      }
+
+      return JSON.parse(text);
     } catch (error) {
       return {
         status: 'error',
@@ -117,7 +140,7 @@ export class VideoClipService {
    */
   async deleteClip(clipId: string): Promise<boolean> {
     try {
-      const response = await fetch(`${this.apiBaseUrl}/api/clip/${clipId}`, {
+      const response = await fetch(`${this.apiBaseUrl}/api/clips/${clipId}`, {
         method: 'DELETE',
       });
       return response.ok;

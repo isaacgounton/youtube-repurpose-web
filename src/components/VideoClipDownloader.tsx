@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
@@ -64,6 +64,10 @@ export function VideoClipDownloader({
 
     if (clipId) {
       toast.success("Clip download started! Check progress below.");
+      // Refresh clips list after a short delay to show the new clip
+      setTimeout(() => {
+        loadClips();
+      }, 2000);
     }
   };
 
@@ -93,6 +97,7 @@ export function VideoClipDownloader({
     const success = await deleteClip(clipId);
     if (success) {
       toast.success("Clip deleted successfully");
+      loadClips(); // Refresh the list
     } else {
       toast.error("Failed to delete clip");
     }
@@ -118,8 +123,23 @@ export function VideoClipDownloader({
     }
   };
 
-  const allClips = getAllClips();
+  const [allClips, setAllClips] = useState<any[]>([]);
   const activeDownloads = Object.values(downloadProgress);
+
+  // Load clips function
+  const loadClips = async () => {
+    try {
+      const clips = await getAllClips();
+      setAllClips(clips);
+    } catch (error) {
+      console.error('Error loading clips:', error);
+    }
+  };
+
+  // Load clips on component mount
+  useEffect(() => {
+    loadClips();
+  }, []);
 
   return (
     <div className="space-y-6">

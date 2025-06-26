@@ -23,7 +23,7 @@ export interface UseVideoDownloaderReturn {
   error: string | null;
   clearError: () => void;
   deleteClip: (clipId: string) => Promise<boolean>;
-  getAllClips: () => VideoClipResponse[];
+  getAllClips: () => Promise<VideoClipResponse[]>;
 }
 
 export function useVideoDownloader(
@@ -100,7 +100,7 @@ export function useVideoDownloader(
     const pollProgress = async () => {
       try {
         const progress = await videoService.current.checkProgress(clipId);
-        
+
         setDownloadProgress(prev => ({
           ...prev,
           [clipId]: {
@@ -126,6 +126,19 @@ export function useVideoDownloader(
         }
       } catch (error) {
         console.error('Error polling progress:', error);
+
+        // Set error state for this clip
+        setDownloadProgress(prev => ({
+          ...prev,
+          [clipId]: {
+            clipId,
+            status: 'error',
+            progress: 0,
+            error: error instanceof Error ? error.message : 'Polling failed',
+          }
+        }));
+
+        // Stop polling
         if (progressIntervals.current[clipId]) {
           clearInterval(progressIntervals.current[clipId]);
           delete progressIntervals.current[clipId];
@@ -163,10 +176,36 @@ export function useVideoDownloader(
     }
   }, []);
 
-  const getAllClips = useCallback((): VideoClipResponse[] => {
+  const getAllClips = useCallback(async (): Promise<VideoClipResponse[]> => {
+    try {
+      // First try to get from API (existing files)
+      const response = await fetch(`${apiBaseUrl}/api/clips`);
+      if (response.ok) {
+        const apiClips = await response.json();
+
+        // Merge with local storage clips
+        const localClips = localStorage.current.getAllClips();
+        const localClipsArray = Object.values(localClips);
+
+        // Combine and deduplicate
+        const allClips = [...apiClips, ...localClipsArray];
+        const uniqueClips = allClips.reduce((acc, clip) => {
+          if (!acc.find(c => c.clipId === clip.clipId)) {
+            acc.push(clip);
+          }
+          return acc;
+        }, [] as VideoClipResponse[]);
+
+        return uniqueClips;
+      }
+    } catch (error) {
+      console.error('Error fetching clips from API:', error);
+    }
+
+    // Fallback to local storage only
     const clips = localStorage.current.getAllClips();
     return Object.values(clips);
-  }, []);
+  }, [apiBaseUrl]);
 
   const clearError = useCallback(() => {
     setError(null);

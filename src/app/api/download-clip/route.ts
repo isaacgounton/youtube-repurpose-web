@@ -185,10 +185,11 @@ async function processVideoClip(clipId: string, request: DownloadRequest) {
 
   } catch (error) {
     console.error('Error processing video clip:', error);
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
     downloadProgress.set(clipId, {
       status: 'error',
       progress: 0,
-      error: error instanceof Error ? error.message : 'Unknown error',
+      error: errorMessage,
     });
   }
 }
@@ -210,23 +211,63 @@ function getFormatSelector(quality?: string): string {
 
 // Progress check endpoint
 export async function GET(request: NextRequest) {
-  const url = new URL(request.url);
-  const clipId = url.searchParams.get('clipId');
+  try {
+    const url = new URL(request.url);
+    const clipId = url.searchParams.get('clipId');
 
-  if (!clipId) {
+    if (!clipId) {
+      return NextResponse.json(
+        { error: 'clipId parameter required' },
+        { status: 400 }
+      );
+    }
+
+    // Check in-memory progress first
+    let progress = downloadProgress.get(clipId);
+
+    // If not in memory, check if file exists on disk
+    if (!progress) {
+      try {
+        const config = getAppConfig();
+        const outputDir = path.join(process.cwd(), 'public', 'clips');
+        const files = await fs.readdir(outputDir);
+        const clipFile = files.find(file => file.startsWith(clipId));
+
+        if (clipFile) {
+          // File exists, create completed progress
+          const filePath = path.join(outputDir, clipFile);
+          const stats = await fs.stat(filePath);
+          const clipUrl = `${config.storage.localConfig?.baseUrl || 'http://localhost:3000'}/clips/${clipFile}`;
+
+          progress = {
+            status: 'complete' as const,
+            progress: 100,
+            clipUrl,
+            fileSize: stats.size,
+          };
+
+          // Store in memory for future requests
+          downloadProgress.set(clipId, progress);
+        } else {
+          return NextResponse.json(
+            { error: 'Clip not found' },
+            { status: 404 }
+          );
+        }
+      } catch (fileError) {
+        return NextResponse.json(
+          { error: 'Clip not found' },
+          { status: 404 }
+        );
+      }
+    }
+
+    return NextResponse.json(progress);
+  } catch (error) {
+    console.error('Error checking progress:', error);
     return NextResponse.json(
-      { error: 'clipId parameter required' },
-      { status: 400 }
+      { error: 'Internal server error' },
+      { status: 500 }
     );
   }
-
-  const progress = downloadProgress.get(clipId);
-  if (!progress) {
-    return NextResponse.json(
-      { error: 'Clip not found' },
-      { status: 404 }
-    );
-  }
-
-  return NextResponse.json(progress);
 }
