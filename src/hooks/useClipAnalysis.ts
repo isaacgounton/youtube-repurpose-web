@@ -6,7 +6,7 @@ export interface UseClipAnalysisReturn {
   progress: number;
   error: string | null;
   candidates: ClipCandidate[];
-  analyzeVideo: (videoElement: HTMLVideoElement, config?: Partial<AnalysisConfig>) => Promise<void>;
+  analyzeVideo: (duration: number, generateCandidate?: (start: number, end: number, totalDuration: number) => ClipCandidate) => Promise<void>;
   clearResults: () => void;
 }
 

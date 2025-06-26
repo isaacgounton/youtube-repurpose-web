@@ -18,6 +18,8 @@ export interface SavedClip {
   originalUrl: string;
   createdAt: Date;
   caption?: string;
+  generatedClipUrl?: string; // URL to the downloaded/generated video clip
+  clipId?: string; // ID of the generated clip for tracking
   // scheduleTime?: Date;
 }
 

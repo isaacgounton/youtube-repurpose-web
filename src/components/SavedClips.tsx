@@ -184,7 +184,11 @@ export default function SavedClips({ clips, onRemoveClip }: SavedClipsProps) {
         youtubeURL: clip.originalUrl,
         videoId: clip.videoId,
         title: clip.title,
-        caption: clipCaptions[clip.id] || '', // Include caption in the webhook data
+        caption: clipCaptions[clip.id] || '',
+        // Use generated clip URL if available, otherwise fall back to YouTube URL
+        clipUrl: clip.generatedClipUrl || clip.originalUrl,
+        hasGeneratedClip: !!clip.generatedClipUrl,
+        clipId: clip.clipId,
         // scheduleTime: clipScheduleTimes[clip.id] || undefined // Include schedule time
       }));
 

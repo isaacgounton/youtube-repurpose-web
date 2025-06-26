@@ -16,6 +16,7 @@ import { toast } from "sonner";
 import { formatTime } from "./video/utils";
 import { DateTimePicker } from "./ui/datetime-picker";
 import { ClipCandidates } from "./ClipCandidates";
+import { VideoClipDownloader } from "./VideoClipDownloader";
 
 const formSchema = z.object({
   youtubeUrl: z
@@ -429,9 +430,9 @@ export default function YouTubeClipper({
     toast.success(`Selected clip: ${formatTime(start)} - ${formatTime(end)}`);
   };
 
-  const saveCurrentClip = () => {
+  const saveCurrentClip = (generatedClipUrl?: string, clipId?: string) => {
     if (!videoId || !onSaveClip) return;
-    
+
     // Create a new saved clip object
     const newClip: SavedClip = {
       id: uuidv4(),
@@ -443,16 +444,18 @@ export default function YouTubeClipper({
       originalUrl,
       createdAt: new Date(),
       caption: clipCaption,
+      generatedClipUrl, // Include the generated clip URL if available
+      clipId, // Include the clip ID for tracking
     };
-    
+
     // Call the parent's onSaveClip function
     onSaveClip(newClip);
-    
+
     // Show success toast
     toast.success("Clip saved successfully!", {
       description: `Your clip "${newClip.title}" has been added to My Clips.`,
     });
-    
+
     // Reset the clip title, caption and schedule time
     setClipTitle("");
     setClipCaption("");
@@ -626,8 +629,8 @@ export default function YouTubeClipper({
                 />
               </div>
               
-              <Button 
-                onClick={saveCurrentClip} 
+              <Button
+                onClick={() => saveCurrentClip()}
                 className="yt-clipper-button w-full"
               >
                 Save to My Clips
@@ -680,8 +683,24 @@ export default function YouTubeClipper({
               )}
             </div>
           </div>
+
+          {/* Video Clip Downloader */}
+          {videoId && (
+            <VideoClipDownloader
+              youtubeUrl={originalUrl}
+              videoId={videoId}
+              startTime={startTime}
+              endTime={endTime}
+              clipTitle={clipTitle}
+              onClipGenerated={(clipUrl, clipId) => {
+                toast.success("Video clip generated successfully!");
+                // Auto-save the clip with the generated URL
+                saveCurrentClip(clipUrl, clipId);
+              }}
+            />
+          )}
         </div>
       )}
     </div>
   );
-} 
+}
