@@ -21,13 +21,52 @@ export interface SavedClip {
   // scheduleTime?: Date;
 }
 
+// Clip candidate interface
+interface ClipCandidate {
+  start: number;
+  end: number;
+  score: number;
+  reasons: string[];
+  audioEnergy: number;
+  sceneChanges: number;
+  motionLevel: number;
+}
+
+// Video state interface
+interface VideoState {
+  videoId: string | null;
+  originalUrl: string;
+  duration: number;
+  startTime: number;
+  endTime: number;
+  clipTitle: string;
+  clipCaption: string;
+  analysisResults: ClipCandidate[];
+}
+
 export default function Home() {
   const [videoLoaded, setVideoLoaded] = useState(false);
   const [activeTab, setActiveTab] = useState<"clipper" | "saved">("clipper");
   const [savedClips, setSavedClips] = useState<SavedClip[]>([]);
 
+  // Persistent video state
+  const [videoState, setVideoState] = useState<VideoState>({
+    videoId: null,
+    originalUrl: "",
+    duration: 0,
+    startTime: 0,
+    endTime: 60,
+    clipTitle: "",
+    clipCaption: "",
+    analysisResults: [],
+  });
+
   const handleSaveClip = (clip: SavedClip) => {
     setSavedClips(prev => [...prev, clip]);
+  };
+
+  const handleVideoStateChange = (newState: Partial<VideoState>) => {
+    setVideoState(prev => ({ ...prev, ...newState }));
   };
 
   return (
@@ -98,9 +137,11 @@ export default function Home() {
                 </p>
               </>
             )}
-            <YouTubeClipper 
-              onVideoLoad={() => setVideoLoaded(true)} 
-              onSaveClip={handleSaveClip} 
+            <YouTubeClipper
+              onVideoLoad={() => setVideoLoaded(true)}
+              onSaveClip={handleSaveClip}
+              videoState={videoState}
+              onVideoStateChange={handleVideoStateChange}
             />
           </div>
         ) : (

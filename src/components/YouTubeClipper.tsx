@@ -15,7 +15,6 @@ import { v4 as uuidv4 } from 'uuid';
 import { toast } from "sonner";
 import { formatTime } from "./video/utils";
 import { DateTimePicker } from "./ui/datetime-picker";
-import { useClipAnalysis } from "@/hooks/useClipAnalysis";
 import { ClipCandidates } from "./ClipCandidates";
 
 const formSchema = z.object({
@@ -41,37 +40,68 @@ interface Clip {
   script: string;
 }
 
+// Clip candidate interface
+interface ClipCandidate {
+  start: number;
+  end: number;
+  score: number;
+  reasons: string[];
+  audioEnergy: number;
+  sceneChanges: number;
+  motionLevel: number;
+}
+
+// Video state interface
+interface VideoState {
+  videoId: string | null;
+  originalUrl: string;
+  duration: number;
+  startTime: number;
+  endTime: number;
+  clipTitle: string;
+  clipCaption: string;
+  analysisResults: ClipCandidate[];
+}
+
 interface YouTubeClipperProps {
   onVideoLoad: () => void;
   onSaveClip?: (clip: SavedClip) => void;
+  videoState: VideoState;
+  onVideoStateChange: (newState: Partial<VideoState>) => void;
 }
 
-export default function YouTubeClipper({ onVideoLoad, onSaveClip }: YouTubeClipperProps) {
-  const [videoId, setVideoId] = useState<string | null>(null);
-  const [startTime, setStartTime] = useState(0);
-  const [endTime, setEndTime] = useState(60);
-  const [duration, setDuration] = useState(0);
+export default function YouTubeClipper({
+  onVideoLoad,
+  onSaveClip,
+  videoState,
+  onVideoStateChange
+}: YouTubeClipperProps) {
+  // Use persistent state from parent
+  const { videoId, originalUrl, duration, startTime, endTime, clipTitle, clipCaption, analysisResults } = videoState;
+
+  // Local UI state that doesn't need persistence
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [clipDuration, setClipDuration] = useState(60);
-  const [originalUrl, setOriginalUrl] = useState("");
   const [copySuccess, setCopySuccess] = useState(false);
   const [suggestedClips, setSuggestedClips] = useState<Clip[]>([]);
   const [isLoadingClips, setIsLoadingClips] = useState(false);
   const playerRef = useRef<any>(null);
   const playerContainerRef = useRef<HTMLDivElement | null>(null);
-  const [clipTitle, setClipTitle] = useState("");
-  const [clipCaption, setClipCaption] = useState("");
 
-  // Clip analysis hook
-  const {
-    isAnalyzing,
-    progress,
-    error: analysisError,
-    candidates,
-    analyzeVideo,
-    clearResults,
-  } = useClipAnalysis();
+  // Helper functions to update persistent state
+  const setVideoId = (id: string | null) => onVideoStateChange({ videoId: id });
+  const setOriginalUrl = (url: string) => onVideoStateChange({ originalUrl: url });
+  const setDuration = (dur: number) => onVideoStateChange({ duration: dur });
+  const setStartTime = (time: number) => onVideoStateChange({ startTime: time });
+  const setEndTime = (time: number) => onVideoStateChange({ endTime: time });
+  const setClipTitle = (title: string) => onVideoStateChange({ clipTitle: title });
+  const setClipCaption = (caption: string) => onVideoStateChange({ clipCaption: caption });
+
+  // Analysis state (local since it's UI state)
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [analysisProgress, setAnalysisProgress] = useState(0);
+  const [analysisError, setAnalysisError] = useState<string | null>(null);
 
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
@@ -218,17 +248,27 @@ export default function YouTubeClipper({ onVideoLoad, onSaveClip }: YouTubeClipp
   // Generate clip URL with timestamps
   const generateClipUrl = () => {
     if (!videoId) return "";
-    
-    // Start with base YouTube URL
+
+    // YouTube supports several timestamp formats:
+    // 1. &t=123s (start time only)
+    // 2. &start=123&end=456 (start and end times)
+    // Note: YouTube doesn't natively support end times in URLs, but we can create a descriptive URL
+
     let clipUrl = `https://www.youtube.com/watch?v=${videoId}`;
-    
-    // Add start time parameter (in seconds)
-    clipUrl += `&start=${Math.floor(startTime)}`;
-    
-    // Add end time parameter (in seconds)
-    clipUrl += `&end=${Math.floor(endTime)}`;
-    
+    clipUrl += `&t=${Math.floor(startTime)}s`;
+
     return clipUrl;
+  };
+
+  // Generate a more detailed clip URL for sharing
+  const generateDetailedClipUrl = () => {
+    if (!videoId) return "";
+
+    const clipUrl = generateClipUrl();
+    const duration = endTime - startTime;
+
+    // Add clip info as a comment-style parameter (for user reference)
+    return `${clipUrl} (Clip: ${formatTime(startTime)} - ${formatTime(endTime)}, Duration: ${formatTime(duration)})`;
   };
   
   // Handle copying clip URL to clipboard
@@ -249,20 +289,63 @@ export default function YouTubeClipper({ onVideoLoad, onSaveClip }: YouTubeClipp
   };
 
   const fetchSuggestedClips = async () => {
-    if (!videoId || !playerRef.current || !duration) return;
+    if (!videoId || !duration) return;
 
     try {
       toast.info("Starting video analysis...");
 
-      // Clear previous results
-      clearResults();
+      setIsAnalyzing(true);
+      setAnalysisProgress(0);
+      setAnalysisError(null);
 
-      // Use the updated hook with duration and candidate generator
-      await analyzeVideo(duration, generateClipCandidate);
+      // Clear previous results
+      onVideoStateChange({ analysisResults: [] });
+
+      // Analysis configuration
+      const clipDuration = 30;
+      const overlap = 15;
+      const step = clipDuration - overlap;
+      const minClipLength = 10;
+
+      const totalWindows = Math.ceil((duration - minClipLength) / step);
+      const results: ClipCandidate[] = [];
+
+      let processedWindows = 0;
+
+      // Generate analysis windows
+      for (let start = 0; start < duration - minClipLength; start += step) {
+        const end = Math.min(start + clipDuration, duration);
+
+        if (end - start < minClipLength) continue;
+
+        // Simulate processing time
+        await new Promise(resolve => setTimeout(resolve, 150));
+
+        // Generate candidate
+        const candidate = generateClipCandidate(start, end, duration);
+        results.push(candidate);
+
+        processedWindows++;
+        setAnalysisProgress((processedWindows / totalWindows) * 100);
+      }
+
+      // Sort by score and take top candidates
+      const topCandidates = results
+        .sort((a, b) => b.score - a.score)
+        .slice(0, 8);
+
+      // Store results in persistent state
+      onVideoStateChange({ analysisResults: topCandidates });
+
+      toast.success(`Found ${topCandidates.length} potential clips!`);
 
     } catch (error) {
       console.error('Error finding clips:', error);
+      setAnalysisError(error instanceof Error ? error.message : 'Analysis failed');
       toast.error("Failed to analyze video");
+    } finally {
+      setIsAnalyzing(false);
+      setAnalysisProgress(100);
     }
   };
 
@@ -507,9 +590,9 @@ export default function YouTubeClipper({ onVideoLoad, onSaveClip }: YouTubeClipp
           {/* Clip Analysis Results */}
           <div className="bg-gray-100 dark:bg-[#252525] rounded-lg p-4">
             <ClipCandidates
-              candidates={candidates}
+              candidates={analysisResults}
               isAnalyzing={isAnalyzing}
-              progress={progress}
+              progress={analysisProgress}
               error={analysisError}
               onSelectClip={handleClipSelection}
               onAnalyze={fetchSuggestedClips}
@@ -555,28 +638,44 @@ export default function YouTubeClipper({ onVideoLoad, onSaveClip }: YouTubeClipp
           <div className="bg-gray-100 dark:bg-[#252525] rounded-lg p-4">
             <h3 className="text-xl font-semibold mb-4">Generate Clip Link</h3>
             <div className="flex flex-col space-y-4">
-              <Button 
-                onClick={generateClipUrl} 
-                className="yt-clipper-button"
-              >
-                Generate Clip URL
-              </Button>
-              
-              {originalUrl && startTime !== undefined && endTime !== undefined && (
-                <div className="mt-4">
+              <p className="text-sm text-gray-600 dark:text-gray-400">
+                Generate a YouTube link that starts at your selected clip time.
+                Note: YouTube doesn't support end times in URLs, but the link will start at the right moment.
+              </p>
+
+              {videoId && (
+                <div className="space-y-3">
                   <div className="flex space-x-2">
                     <Input
-                      value={`${originalUrl}&t=${Math.floor(startTime)}s&end=${Math.floor(endTime)}`}
+                      value={generateClipUrl()}
                       readOnly
                       className="bg-white dark:bg-[#1E1E1E] border-gray-200 dark:border-[#333333] text-black dark:text-white flex-1"
+                      placeholder="Clip URL will appear here..."
                     />
-                    <Button 
-                      onClick={copyClipUrl} 
+                    <Button
+                      onClick={copyClipUrl}
                       className="yt-clipper-button whitespace-nowrap"
+                      title="Copy to clipboard"
                     >
                       {copySuccess ? "Copied!" : "Copy URL"}
                     </Button>
                   </div>
+
+                  <div className="text-xs text-gray-500 dark:text-gray-400 bg-gray-50 dark:bg-[#1E1E1E] p-2 rounded">
+                    <strong>Clip Details:</strong><br/>
+                    Start: {formatTime(startTime)} | End: {formatTime(endTime)} | Duration: {formatTime(endTime - startTime)}
+                  </div>
+
+                  <div className="text-xs text-blue-600 dark:text-blue-400">
+                    💡 <strong>Tip:</strong> This link will start the video at {formatTime(startTime)}.
+                    Share this with others to show them exactly where your clip begins!
+                  </div>
+                </div>
+              )}
+
+              {!videoId && (
+                <div className="text-center py-4 text-gray-500 dark:text-gray-400">
+                  Load a YouTube video to generate clip links
                 </div>
               )}
             </div>
