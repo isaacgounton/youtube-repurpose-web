@@ -9,11 +9,12 @@ RUN apk add --no-cache \
     curl \
     bash
 
-# Install yt-dlp
-RUN pip3 install yt-dlp
+# Install yt-dlp using official binary
+RUN wget https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp -O /usr/local/bin/yt-dlp && \
+    chmod a+rx /usr/local/bin/yt-dlp
 
 # Verify installations
-RUN yt-dlp --version && ffmpeg -version
+RUN yt-dlp --version && ffmpeg -version || exit 1
 
 # Install dependencies only when needed
 FROM base AS deps
@@ -36,7 +37,9 @@ RUN npm run build
 FROM base AS runner
 WORKDIR /app
 
-ENV NODE_ENV production
+ENV NODE_ENV=production
+ENV PORT=3000
+ENV HOSTNAME="0.0.0.0"
 
 # Create nextjs user
 RUN addgroup --system --gid 1001 nodejs
@@ -53,8 +56,5 @@ RUN mkdir -p /app/public/clips && chown -R nextjs:nodejs /app/public/clips
 USER nextjs
 
 EXPOSE 3000
-
-ENV PORT 3000
-ENV HOSTNAME "0.0.0.0"
 
 CMD ["node", "server.js"]
