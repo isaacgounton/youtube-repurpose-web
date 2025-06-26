@@ -190,7 +190,7 @@ export function useVideoDownloader(
         // Combine and deduplicate
         const allClips = [...apiClips, ...localClipsArray];
         const uniqueClips = allClips.reduce((acc, clip) => {
-          if (!acc.find(c => c.clipId === clip.clipId)) {
+          if (!acc.find((c: VideoClipResponse) => c.clipId === clip.clipId)) {
             acc.push(clip);
           }
           return acc;
