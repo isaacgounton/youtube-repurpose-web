@@ -1,9 +1,9 @@
 "use client";
 
-import YouTubeClipper from "@/components/YouTubeClipper";
+import YouTubeClipper from "../components/YouTubeClipper";
 import { Package } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { ThemeToggle } from "@/components/theme-toggle";
+import { Button } from "../components/ui/button";
+import { ThemeToggle } from "../components/theme-toggle";
 import { useState } from "react";
 import SavedClips from "@/components/SavedClips";
 
